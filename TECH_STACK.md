@@ -27,7 +27,8 @@ Cloudflare Worker MCP that reads the public Sleeper API and exposes league snaps
 ## 4. Backend / agent orchestration (if any)
 
 - Sleeper HTTP API (`api.sleeper.app/v1`)
-- KV cache for `/players/nfl` (24h)
+- Undocumented projections at `api.sleeper.com` (v1 fallback)
+- KV cache: `/players/nfl` 24h, projections 30m, matchups 60s live / longer once final
 
 ## 5. Models & routing (agent projects)
 
@@ -42,7 +43,7 @@ N/A — data plane only.
 
 ## 7. CI/CD
 
-- GitHub Actions: `ci.yml` typechecks only
+- GitHub Actions: `ci.yml` typechecks and runs `npm test` (`node --test`)
 - Deploy: Cloudflare Workers Builds (GitHub `main` → `npx wrangler deploy`). Same as porkbun-mcp. No GitHub API token.
 
 ## 8. MCP servers & skills in use
@@ -58,6 +59,9 @@ N/A — data plane only.
 ```
 src/index.ts      MCP tools + fetch handler
 src/sleeper.ts    Sleeper client + KV cache
+src/matchups.ts   Matchup pairing / lineup zip (pure)
+src/projections.ts  Projection normalization + league scoring (pure)
+test/             node --test suites + real response fixtures
 wrangler.toml     Worker + KV binding
 ```
 

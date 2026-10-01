@@ -29,6 +29,23 @@ Free agents are computed here (NFL player map minus every rostered ID, and only 
 | `get_transactions` | Adds / drops / trades for a week |
 | `get_traded_picks` | Future pick movement |
 | `find_trade_fits` | Position counts per team |
+| `get_matchups` | Head-to-head games for a week: totals, starters by slot with points, bench with points, league-scored projections when available |
+| `get_scoreboard` | Every game in a week, team vs team, totals only |
+| `get_projections` | Projected points scored with the league's own `scoring_settings`; rostered players by default, or pass `player_ids` for full stat lines |
+
+`week` defaults to the current NFL week from `/v1/state/nfl`.
+
+## Projections
+
+Projections are **not** in Sleeper's documented API.
+
+- **Primary:** `https://api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular&position[]=QB&...` (what Sleeper's own app uses).
+- **Fallback, only if the primary fails:** `https://api.sleeper.app/v1/projections/nfl/regular/{season}/{week}`, then `.../v1/projections/nfl/{season}/{week}`. The bare v1 URL has been seen returning nothing but `{}` per player.
+- An entry with only ADP / rank / generic-points keys is not a projection. A response with no real stat lines counts as a failure, and the next source is tried. Failures are never cached.
+- Sleeper returns projected **stat lines**, not fantasy points. Points are computed by multiplying each stat by the league's `scoring_settings` (from `GET /v1/league/{id}`), not generic PPR. Applied to week 3 2026 actuals, the same method reproduces Sleeper's own `players_points` exactly.
+- Projected stats with no league scoring rule are listed in `unscored_stat_keys` (with player counts), never silently dropped. ADP / generic points keys are listed in `ignored_meta_keys`.
+- Projections give missed field goals only by distance (`fgmiss_30_39`, ...). When the league scores the total `fgmiss`, it is derived from those and listed in `derived_stat_keys`.
+- If projections are unavailable, `get_matchups` still returns actual scores with `projections.available: false`.
 
 ## Deploy (Cloudflare Workers Builds)
 
@@ -106,11 +123,17 @@ grok mcp add --transport http sleeper https://sleeper-mcp.<your-subdomain>.worke
 npm run dev
 ```
 
+Tests (Node's built-in runner, no extra deps) run against real responses saved in `test/fixtures/`:
+
+```bash
+npm test
+```
+
 Inspector: `npx @modelcontextprotocol/inspector@latest` → `http://localhost:8787/mcp`
 
 ## Limits
 
-- Sleeper: stay under ~1000 req/min. Player dump is cached 24h in KV.
+- Sleeper: stay under ~1000 req/min. KV cache: player dump 24h, projections 30 min, current-week matchups 60s, last week's matchups 24h (stat corrections), older weeks 30 days.
 - Read-only. Cannot add, drop, or trade.
 - Do not point a public Worker at the world without your own rate limit.
 

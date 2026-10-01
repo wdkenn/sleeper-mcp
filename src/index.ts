@@ -1,12 +1,19 @@
 import { createMcpHandler } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { buildMatchups, buildScoreboard } from "./matchups";
+import { scoreProjections, type ScoredSet } from "./projections";
 import {
   type Env,
+  type NflState,
+  type Projections,
+  type SleeperPlayer,
   getLeague,
   getLeagueUsers,
+  getMatchups,
   getNflState,
   getPlayersMap,
+  getProjections,
   getRosters,
   getTradedPicks,
   getTransactions,
@@ -15,6 +22,8 @@ import {
   isWaiverEligible,
   playerName,
   resolveIds,
+  teamIndex,
+  weekStatus,
 } from "./sleeper";
 
 function text(obj: unknown) {
@@ -25,6 +34,36 @@ function leagueIdOf(env: Env, override?: string | null) {
   const id = override || env.SLEEPER_LEAGUE_ID;
   if (!id) throw new Error("Pass league_id or set SLEEPER_LEAGUE_ID on the Worker.");
   return id;
+}
+
+/** Projections for a league's season. Postseason projections only exist for the live season. */
+async function leagueProjections(
+  env: Env,
+  league: { season: string },
+  week: number,
+  state: NflState,
+): Promise<Projections> {
+  const seasonType = league.season === state.season && state.season_type === "post" ? "post" : "regular";
+  return getProjections(env, league.season, week, seasonType);
+}
+
+function projectionSummary(proj: Projections, scored: ScoredSet) {
+  return {
+    available: true,
+    source: proj.source,
+    ...(proj.fallbacks.length ? { fallbacks: proj.fallbacks } : {}),
+    points_basis: "league scoring_settings",
+    unscored_stat_keys: scored.unscored_stat_keys,
+    ignored_meta_keys: scored.ignored_meta_keys,
+    derived_stat_keys: scored.derived_stat_keys,
+  };
+}
+
+function playerInfo(map: Record<string, SleeperPlayer>) {
+  return (id: string) => {
+    const p = map[id];
+    return { name: playerName(p), position: p?.position || null, team: p?.team || null };
+  };
 }
 
 function createServer(env: Env) {
@@ -76,13 +115,14 @@ function createServer(env: Env) {
         getLeagueUsers(id),
         getPlayersMap(env),
       ]);
-      const owners = new Map(users.map((u) => [u.user_id, u]));
+      const index = teamIndex(rosters, users);
       const teams = rosters.map((r) => {
-        const owner = r.owner_id ? owners.get(r.owner_id) : undefined;
+        const info = index.get(r.roster_id);
         return {
           roster_id: r.roster_id,
           owner_id: r.owner_id,
-          owner_name: owner?.display_name || owner?.username || "Open",
+          owner_name: info?.owner_name || "Open",
+          team_name: info?.team_name || null,
           record: r.settings
             ? `${r.settings.wins || 0}-${r.settings.losses || 0}-${r.settings.ties || 0}`
             : null,
@@ -178,9 +218,8 @@ function createServer(env: Env) {
         getLeagueUsers(id),
         getPlayersMap(env),
       ]);
-      const owners = new Map(users.map((u) => [u.user_id, u]));
+      const index = teamIndex(rosters, users);
       const counts = rosters.map((r) => {
-        const owner = r.owner_id ? owners.get(r.owner_id) : undefined;
         const byPos: Record<string, string[]> = {};
         for (const pid of r.players || []) {
           const p = map[pid];
@@ -190,12 +229,130 @@ function createServer(env: Env) {
         }
         return {
           roster_id: r.roster_id,
-          owner: owner?.display_name || owner?.username || "Open",
+          owner: index.get(r.roster_id)?.owner_name || "Open",
           counts: Object.fromEntries(Object.entries(byPos).map(([k, v]) => [k, v.length])),
           players: byPos,
         };
       });
       return text(counts);
+    },
+  );
+
+  server.tool(
+    "get_scoreboard",
+    "Every head-to-head matchup in a week as team vs team with point totals only. Defaults to the current NFL week.",
+    {
+      league_id: z.string().optional(),
+      week: z.number().optional(),
+    },
+    async ({ league_id, week }) => {
+      const id = leagueIdOf(env, league_id);
+      const state = await getNflState();
+      const round = week || state.week || 1;
+      const [rows, rosters, users] = await Promise.all([
+        getMatchups(env, id, round, state),
+        getRosters(id),
+        getLeagueUsers(id),
+      ]);
+      return text({
+        week: round,
+        week_status: weekStatus(round, state),
+        ...buildScoreboard(rows, teamIndex(rosters, users)),
+      });
+    },
+  );
+
+  server.tool(
+    "get_matchups",
+    "Head-to-head matchups for a week: both teams' totals, every starter by lineup slot with points, and bench players with points. Includes league-scored projections when available; still works without them. Defaults to the current NFL week.",
+    {
+      league_id: z.string().optional(),
+      week: z.number().optional(),
+    },
+    async ({ league_id, week }) => {
+      const id = leagueIdOf(env, league_id);
+      const state = await getNflState();
+      const round = week || state.week || 1;
+      const [league, rows, rosters, users, map] = await Promise.all([
+        getLeague(id),
+        getMatchups(env, id, round, state),
+        getRosters(id),
+        getLeagueUsers(id),
+        getPlayersMap(env),
+      ]);
+
+      let projected: ((pid: string) => number | null) | undefined;
+      let projections: Record<string, unknown>;
+      try {
+        if (!league.scoring_settings) throw new Error("League has no scoring_settings.");
+        const proj = await leagueProjections(env, league, round, state);
+        const ids = rows.flatMap((r) => r.players || []);
+        const scored = scoreProjections(proj.players, ids, league.scoring_settings);
+        projected = (pid) => scored.points.get(pid) ?? null;
+        projections = projectionSummary(proj, scored);
+      } catch (e) {
+        projections = { available: false, error: e instanceof Error ? e.message : String(e) };
+      }
+
+      const slots = league.roster_positions.filter((p) => !["BN", "IR", "TAXI"].includes(p));
+      return text({
+        week: round,
+        week_status: weekStatus(round, state),
+        projections,
+        ...buildMatchups(rows, teamIndex(rosters, users), slots, { player: playerInfo(map), projected }),
+      });
+    },
+  );
+
+  server.tool(
+    "get_projections",
+    "Projected fantasy points for a week, computed from projected stat lines with this league's scoring_settings (not generic PPR). Pass player_ids for specific players with full stat lines; otherwise returns every rostered player in the league. Lists any projected stat with no league scoring rule. Defaults to the current NFL week.",
+    {
+      league_id: z.string().optional(),
+      week: z.number().optional(),
+      player_ids: z.array(z.string()).optional(),
+    },
+    async ({ league_id, week, player_ids }) => {
+      const id = leagueIdOf(env, league_id);
+      const state = await getNflState();
+      const round = week || state.week || 1;
+      const [league, rosters, users, map] = await Promise.all([
+        getLeague(id),
+        getRosters(id),
+        getLeagueUsers(id),
+        getPlayersMap(env),
+      ]);
+      if (!league.scoring_settings) throw new Error("League has no scoring_settings.");
+      const proj = await leagueProjections(env, league, round, state);
+
+      const index = teamIndex(rosters, users);
+      const rosteredBy = new Map<string, string>();
+      for (const r of rosters) {
+        const info = index.get(r.roster_id);
+        for (const pid of r.players || []) rosteredBy.set(pid, info?.team_name || info?.owner_name || `Roster ${r.roster_id}`);
+      }
+      const ids = player_ids?.length ? [...new Set(player_ids)] : [...rosteredBy.keys()];
+      const scored = scoreProjections(proj.players, ids, league.scoring_settings);
+      const info = playerInfo(map);
+      const players = ids
+        .map((pid) => ({
+          id: pid,
+          ...info(pid),
+          opponent: proj.players[pid]?.opponent ?? null,
+          fantasy_team: rosteredBy.get(pid) || null,
+          projected_points: scored.points.get(pid) ?? null,
+          ...(player_ids?.length ? { stats: proj.players[pid]?.stats ?? null } : {}),
+        }))
+        .sort((a, b) => (b.projected_points ?? -1e9) - (a.projected_points ?? -1e9));
+
+      return text({
+        season: proj.season,
+        week: round,
+        ...projectionSummary(proj, scored),
+        count: players.length,
+        no_projection: players.filter((p) => p.projected_points == null).map((p) => p.id),
+        players,
+      });
     },
   );
 

@@ -1,6 +1,16 @@
+import { normalizeProjections, type ProjectionEntry } from "./projections";
+import type { MatchupRow, TeamInfo } from "./matchups";
+
 const BASE = "https://api.sleeper.app/v1";
+/** Undocumented; what Sleeper's own app uses for projections. */
+const BASE_COM = "https://api.sleeper.com";
 const PLAYERS_KEY = "players:nfl";
 const PLAYERS_TTL = 60 * 60 * 24;
+const PROJECTIONS_TTL = 60 * 30;
+const LIVE_TTL = 60; // KV minimum
+const RECENT_WEEK_TTL = 60 * 60 * 24; // last week can still get stat corrections
+const COMPLETED_WEEK_TTL = 60 * 60 * 24 * 30;
+const PROJECTION_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
 export type Env = {
   CACHE: KVNamespace;
@@ -26,7 +36,10 @@ export type SleeperUser = {
   user_id: string;
   username?: string;
   display_name?: string;
+  metadata?: { team_name?: string } | null;
 };
+
+export type NflState = { week: number; season: string; season_type: string; display_week: number };
 
 export type SleeperRoster = {
   roster_id: number;
@@ -38,8 +51,8 @@ export type SleeperRoster = {
   settings?: Record<string, number>;
 };
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+async function getJson<T>(path: string, base = BASE): Promise<T> {
+  const res = await fetch(`${base}${path}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
@@ -63,10 +76,39 @@ export function isWaiverEligible(p?: SleeperPlayer | null): boolean {
   return Boolean(p.position || p.fantasy_positions?.length);
 }
 
-export async function getNflState() {
-  return getJson<{ week: number; season: string; season_type: string; display_week: number }>(
-    "/state/nfl",
+/** KV read-through. Keys are `kind:scope[:...]`. KV rejects TTLs under 60s. */
+async function cachedJson<T>(env: Env, key: string, ttl: number, load: () => Promise<T>): Promise<T> {
+  const cached = await env.CACHE.get(key, "json");
+  if (cached != null) return cached as T;
+  const data = await load();
+  await env.CACHE.put(key, JSON.stringify(data), { expirationTtl: Math.max(ttl, 60) });
+  return data;
+}
+
+export function ownerName(u?: SleeperUser | null): string {
+  return u?.display_name || u?.username || "Open";
+}
+
+/** roster_id -> owner and team name. Team name is the user's league-specific metadata.team_name. */
+export function teamIndex(rosters: SleeperRoster[], users: SleeperUser[]): Map<number, TeamInfo> {
+  const owners = new Map(users.map((u) => [u.user_id, u]));
+  return new Map(
+    rosters.map((r) => {
+      const owner = r.owner_id ? owners.get(r.owner_id) : undefined;
+      return [
+        r.roster_id,
+        {
+          owner_id: r.owner_id,
+          owner_name: ownerName(owner),
+          team_name: owner?.metadata?.team_name?.trim() || null,
+        },
+      ];
+    }),
   );
+}
+
+export async function getNflState() {
+  return getJson<NflState>("/state/nfl");
 }
 
 export async function getUser(usernameOrId: string) {
@@ -107,13 +149,74 @@ export async function getTradedPicks(leagueId: string) {
 }
 
 export async function getPlayersMap(env: Env): Promise<Record<string, SleeperPlayer>> {
-  const cached = await env.CACHE.get(PLAYERS_KEY, "json");
-  if (cached && typeof cached === "object") {
-    return cached as Record<string, SleeperPlayer>;
-  }
-  const data = await getJson<Record<string, SleeperPlayer>>("/players/nfl");
-  await env.CACHE.put(PLAYERS_KEY, JSON.stringify(data), { expirationTtl: PLAYERS_TTL });
-  return data;
+  return cachedJson(env, PLAYERS_KEY, PLAYERS_TTL, () =>
+    getJson<Record<string, SleeperPlayer>>("/players/nfl"),
+  );
+}
+
+export type WeekStatus = "completed" | "current" | "upcoming";
+
+export function weekStatus(week: number, state: NflState): WeekStatus {
+  const inSeason = state.season_type === "regular" || state.season_type === "post";
+  if (inSeason && week < state.week) return "completed";
+  if (inSeason && week === state.week) return "current";
+  return "upcoming";
+}
+
+/** Live weeks ~60s. Completed weeks are final apart from stat corrections to the most recent one. */
+function matchupsTtl(week: number, state: NflState): number {
+  if (weekStatus(week, state) !== "completed") return LIVE_TTL;
+  return week === state.week - 1 ? RECENT_WEEK_TTL : COMPLETED_WEEK_TTL;
+}
+
+export async function getMatchups(env: Env, leagueId: string, week: number, state: NflState) {
+  return cachedJson(env, `matchups:${leagueId}:${week}`, matchupsTtl(week, state), () =>
+    getJson<MatchupRow[]>(`/league/${leagueId}/matchups/${week}`),
+  );
+}
+
+export type Projections = {
+  source: string;
+  season: string;
+  week: number;
+  season_type: string;
+  players: Record<string, ProjectionEntry>;
+  /** Sources tried before the one that worked, with why they were rejected. */
+  fallbacks: string[];
+};
+
+/**
+ * Primary: api.sleeper.com (what Sleeper's app uses). Fallback: api.sleeper.app/v1, which has
+ * been seen returning only {} or ADP-only entries. A response with no real stat lines is a failure.
+ * Failures throw before anything is cached.
+ */
+export async function getProjections(
+  env: Env,
+  season: string,
+  week: number,
+  seasonType = "regular",
+): Promise<Projections> {
+  return cachedJson(env, `projections:nfl:${season}:${seasonType}:${week}`, PROJECTIONS_TTL, async () => {
+    const positions = PROJECTION_POSITIONS.map((p) => `position[]=${p}`).join("&");
+    const sources: Array<[string, string, string]> = [
+      [BASE_COM, `/projections/nfl/${season}/${week}?season_type=${seasonType}&${positions}`, "api.sleeper.com"],
+      [BASE, `/projections/nfl/${seasonType}/${season}/${week}`, `api.sleeper.app/v1 (${seasonType})`],
+      [BASE, `/projections/nfl/${season}/${week}`, "api.sleeper.app/v1"],
+    ];
+    const fallbacks: string[] = [];
+    for (const [base, path, source] of sources) {
+      try {
+        const players = normalizeProjections(await getJson<unknown>(path, base));
+        if (Object.keys(players).length) {
+          return { source, season, week, season_type: seasonType, players, fallbacks };
+        }
+        fallbacks.push(`${source}: no entries with projected stats`);
+      } catch (e) {
+        fallbacks.push(`${source}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    throw new Error(`Projections unavailable for ${season} week ${week}. ${fallbacks.join("; ")}`);
+  });
 }
 
 export function resolveIds(ids: string[] | null | undefined, map: Record<string, SleeperPlayer>) {
