@@ -7,10 +7,17 @@ compatibility_flags = ["nodejs_compat"]
 [alias]
 ai = "./src/ai-stub.ts"
 
-# Identity (SLEEPER_USERNAME, SLEEPER_LEAGUE_ID) is encrypted Worker secrets only.
+# Identity (SLEEPER_USERNAME, SLEEPER_LEAGUE_ID) and MCP_AUTH_TOKEN are encrypted Worker secrets only.
 # Do not add them under [vars], even as "". Empty vars overwrite secrets on deploy.
 # Season comes from Sleeper's NFL state, not config.
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "778341e3af63486bad7ca1cc970fbd8b"
+id = "b5015f31be4943bd91536f38fcabec8a"
+
+# Per-IP limit on /mcp, checked before auth. period must be 10 or 60.
+# Wrangler 4 key is [[ratelimits]] with `name` ([[ratelimit]] / `binding` is ignored).
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }

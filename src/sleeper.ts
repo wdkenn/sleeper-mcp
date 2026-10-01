@@ -14,6 +14,9 @@ const PROJECTION_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
 export type Env = {
   CACHE: KVNamespace;
+  RATE_LIMITER: RateLimit;
+  /** Encrypted Worker secret. Never in wrangler.toml or the repo. */
+  MCP_AUTH_TOKEN?: string;
   SLEEPER_USERNAME?: string;
   SLEEPER_LEAGUE_ID?: string;
 };

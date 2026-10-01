@@ -55,7 +55,7 @@ Same path as porkbun-mcp: connect this GitHub repo on the Worker. Cloudflare dep
 
 | Setting | Value |
 |---------|-------|
-| Git account | `merimeesoftware` |
+| Git account | `wdkenn` |
 | Repository | `sleeper-mcp` |
 | Production branch | `main` |
 | Enable Preview builds | on |
@@ -64,7 +64,7 @@ Same path as porkbun-mcp: connect this GitHub repo on the Worker. Cloudflare dep
 
 Leave the API token on the default Cloudflare-generated Builds token. Runtime identity stays on **Settings → Variables and Secrets** as **encrypted secrets**, not in GitHub and not in `[vars]`. Empty `SLEEPER_USERNAME` / `SLEEPER_LEAGUE_ID` in `wrangler.toml` overwrite secrets of the same name on deploy. Season is not a Worker var; `list_leagues` uses Sleeper's current NFL season unless the caller passes `season`.
 
-First-time KV (already done for merimeesoftware):
+First-time KV (already done for wdkenn):
 
 ```bash
 npx wrangler kv namespace create sleeper-mcp-cache
@@ -72,14 +72,7 @@ npx wrangler kv namespace create sleeper-mcp-cache
 
 Put the returned id in `wrangler.toml` under `kv_namespaces[0].id`.
 
-Optional defaults (or pass IDs on every tool call):
-
-```bash
-npx wrangler secret put SLEEPER_USERNAME
-npx wrangler secret put SLEEPER_LEAGUE_ID
-```
-
-League ID is the number in `https://sleeper.com/leagues/<id>/...`.
+Secrets: see [Auth](#auth). `MCP_AUTH_TOKEN` is required; the identity defaults are optional.
 
 Manual deploy from a logged-in machine:
 
@@ -93,9 +86,34 @@ MCP URL:
 https://sleeper-mcp.<your-subdomain>.workers.dev/mcp
 ```
 
+## Auth
+
+Every `/mcp` request needs the shared token. `/health`, CORS preflight, and the `GET /mcp` 405 stay public.
+
+- **Bearer header (preferred):** `Authorization: Bearer <MCP_AUTH_TOKEN>` to `/mcp`.
+- **Path fallback** for clients that cannot send custom headers: `https://sleeper-mcp.<your-subdomain>.workers.dev/mcp/<MCP_AUTH_TOKEN>`. Everything after `/mcp/` is the token, so base64 `/`, `+`, `=` work as-is; percent-encoding them also works. A URL token ends up in client configs, browser history, and request logs, so use the header when the client supports it, and rotate the token if a URL leaks.
+- **Missing or wrong token:** `401 Unauthorized`. If `MCP_AUTH_TOKEN` is not set on the Worker, every request is rejected.
+- **Rate limit:** 60 requests per 60 seconds per client IP (`CF-Connecting-IP`), checked before auth, so failed guesses count too. Over the limit: `429 Too Many Requests`. This is the `RATE_LIMITER` binding in `wrangler.toml` (`[[ratelimits]]`; `period` must be 10 or 60). Cloudflare's limiter is per-location and approximate, not an exact global count.
+
+Three encrypted secrets, set in **Settings → Variables and Secrets** or with Wrangler. Never in `wrangler.toml`, `[vars]`, or GitHub:
+
+| Secret | Required | Purpose |
+|--------|----------|---------|
+| `MCP_AUTH_TOKEN` | yes | Shared token for `/mcp`. Generate with `openssl rand -base64 32`. |
+| `SLEEPER_USERNAME` | no | Default user for `list_leagues` |
+| `SLEEPER_LEAGUE_ID` | no | Default league for league tools (the number in `https://sleeper.com/leagues/<id>/...`) |
+
+```bash
+npx wrangler secret put MCP_AUTH_TOKEN
+npx wrangler secret put SLEEPER_USERNAME
+npx wrangler secret put SLEEPER_LEAGUE_ID
+```
+
+To rotate the token, `put` a new value and update every client.
+
 ## Connect
 
-**Grok:** grok.com → Connectors → New → Custom → paste the **full** `/mcp` URL, including `https://`. The field can crop the left side (`leeper-mcp...`); confirm the stored value is not missing `https://` before Add.
+**Grok:** grok.com → Connectors → New → Custom → paste the **full** `/mcp/<MCP_AUTH_TOKEN>` URL (path fallback), including `https://`. The field can crop the left side (`leeper-mcp...`); confirm the stored value is not missing `https://` before Add.
 
 Streamable HTTP is POST-only. `GET /mcp` returns **405** immediately (`Allow: POST`) so clients that probe SSE do not hang.
 
@@ -105,7 +123,8 @@ Streamable HTTP is POST-only. `GET /mcp` returns **405** immediately (`Allow: PO
 {
   "mcpServers": {
     "sleeper": {
-      "url": "https://sleeper-mcp.<your-subdomain>.workers.dev/mcp"
+      "url": "https://sleeper-mcp.<your-subdomain>.workers.dev/mcp",
+      "headers": { "Authorization": "Bearer <MCP_AUTH_TOKEN>" }
     }
   }
 }
@@ -114,12 +133,15 @@ Streamable HTTP is POST-only. `GET /mcp` returns **405** immediately (`Allow: PO
 **Grok CLI:**
 
 ```bash
-grok mcp add --transport http sleeper https://sleeper-mcp.<your-subdomain>.workers.dev/mcp
+grok mcp add --transport http sleeper https://sleeper-mcp.<your-subdomain>.workers.dev/mcp/<MCP_AUTH_TOKEN>
 ```
 
 ## Local
 
+Put a local-only token in `.dev.vars` (gitignored), or every request returns 401:
+
 ```bash
+echo "MCP_AUTH_TOKEN=$(openssl rand -base64 32)" > .dev.vars
 npm run dev
 ```
 
@@ -129,13 +151,13 @@ Tests (Node's built-in runner, no extra deps) run against real responses saved i
 npm test
 ```
 
-Inspector: `npx @modelcontextprotocol/inspector@latest` → `http://localhost:8787/mcp`
+Inspector: `npx @modelcontextprotocol/inspector@latest` → `http://localhost:8787/mcp` with header `Authorization: Bearer <token from .dev.vars>`.
 
 ## Limits
 
 - Sleeper: stay under ~1000 req/min. KV cache: player dump 24h, projections 30 min, current-week matchups 60s, last week's matchups 24h (stat corrections), older weeks 30 days.
 - Read-only. Cannot add, drop, or trade.
-- Do not point a public Worker at the world without your own rate limit.
+- `/mcp` is token-gated and rate limited per IP (see [Auth](#auth)). Keep the token secret.
 
 ## License
 

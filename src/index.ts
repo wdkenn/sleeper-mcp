@@ -1,6 +1,7 @@
 import { createMcpHandler } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { authorize } from "./auth";
 import { buildMatchups, buildScoreboard } from "./matchups";
 import { scoreProjections, type ScoredSet } from "./projections";
 import {
@@ -368,7 +369,7 @@ const cors = {
 };
 
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
@@ -387,7 +388,7 @@ export default {
       );
     }
 
-    if (url.pathname === "/mcp" && request.method === "GET") {
+    if ((url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) && request.method === "GET") {
       return new Response("Method Not Allowed. Use POST for Streamable HTTP.", {
         status: 405,
         headers: {
@@ -398,7 +399,15 @@ export default {
       });
     }
 
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const { success } = await env.RATE_LIMITER.limit({ key: ip });
+    if (!success) return new Response("Too Many Requests", { status: 429, headers: cors });
+
+    // Bearer header, or /mcp/<token> for clients that cannot send custom headers.
+    const authed = authorize(request, env.MCP_AUTH_TOKEN);
+    if (!authed) return new Response("Unauthorized", { status: 401, headers: cors });
+
     const server = createServer(env);
-    return createMcpHandler(server)(request, env, ctx);
+    return createMcpHandler(server)(authed, env, ctx);
   },
 };
