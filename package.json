@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.23.0",

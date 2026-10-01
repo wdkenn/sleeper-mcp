@@ -1,0 +1,204 @@
+[
+ {
+  "avatar": "8eb8f8bf999945d523f2c4033f70473e",
+  "display_name": "Wavyandyru",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "allow_sms": "on",
+   "avatar": "https://sleepercdn.com/images/mascots_v2/09_Panda/idle-mobile-small.gif",
+   "mention_pn": "on",
+   "team_name": "Wicks on fire"
+  },
+  "settings": null,
+  "user_id": "867297636460453888"
+ },
+ {
+  "avatar": "e7af4deab0289b4f5505646424895246",
+  "display_name": "milkpint",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "allow_sms": "on",
+   "mention_pn": "on",
+   "team_name": "The Hindenburrow Disaster"
+  },
+  "settings": null,
+  "user_id": "994651453371252736"
+ },
+ {
+  "avatar": "e7af4deab0289b4f5505646424895246",
+  "display_name": "leighalexander",
+  "is_bot": false,
+  "is_owner": true,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "avatar": "https://sleepercdn.com/uploads/9407ebca7df50ac3cb383d93d372c4d5",
+   "mention_pn": "on",
+   "team_name": "ForWhomTheBellsToll"
+  },
+  "settings": null,
+  "user_id": "1121546289931481088"
+ },
+ {
+  "avatar": "f0edbf4278f53f9425db175073df6584",
+  "display_name": "sruche",
+  "is_bot": false,
+  "is_owner": true,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "avatar": "https://sleepercdn.com/uploads/55943dfaceae4d3b76b538023c661859.jpg",
+   "league_report_pn": "on",
+   "mascot_message": "on",
+   "mention_pn": "on",
+   "player_like_pn": "on",
+   "player_nickname_update": "on",
+   "team_name": "The Curse.",
+   "team_name_update": "on",
+   "trade_block_pn": "on",
+   "transaction_commissioner": "on",
+   "transaction_free_agent": "on",
+   "transaction_trade": "on",
+   "transaction_waiver": "on",
+   "user_message_pn": "on"
+  },
+  "settings": null,
+  "user_id": "1121564793833467904"
+ },
+ {
+  "avatar": "b319fdf8b7b5b0359d3c78622ba4d70c",
+  "display_name": "amstacey",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "avatar": "https://sleepercdn.com/uploads/601cd79220220eb764ae75e9eb00b686.jpg",
+   "league_report_pn": "on",
+   "mascot_message": "off",
+   "mention_pn": "on",
+   "player_like_pn": "on",
+   "player_nickname_update": "off",
+   "team_name": "The Wet and the Reckless",
+   "team_name_update": "on",
+   "trade_block_pn": "off",
+   "transaction_commissioner": "on",
+   "transaction_free_agent": "off",
+   "transaction_trade": "off",
+   "transaction_waiver": "on",
+   "user_message_pn": "on"
+  },
+  "settings": null,
+  "user_id": "1123332676359995392"
+ },
+ {
+  "avatar": "82aec8e811b839b8ec25d7b458afd57b",
+  "display_name": "malachiblork",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "avatar": "https://sleepercdn.com/uploads/761e2708f34e557e811eb2e1c28f81f9.jpg",
+   "mention_pn": "on",
+   "team_name": "Goldie’s Gridiron Gang "
+  },
+  "settings": null,
+  "user_id": "1125512414084116480"
+ },
+ {
+  "avatar": "8eb8f8bf999945d523f2c4033f70473e",
+  "display_name": "tylerstacey12",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "allow_sms": "on",
+   "mention_pn": "on",
+   "team_name": "Jed York State of Mind"
+  },
+  "settings": null,
+  "user_id": "1125516675064913920"
+ },
+ {
+  "avatar": "f60355efc358686a659ddb0ab26e9bfe",
+  "display_name": "PookiePuker",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "mention_pn": "on",
+   "team_name": "Pookie Puker"
+  },
+  "settings": null,
+  "user_id": "1125518413025177600"
+ },
+ {
+  "avatar": "e7af4deab0289b4f5505646424895246",
+  "display_name": "wickerplane",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "allow_sms": "on",
+   "avatar": "https://sleepercdn.com/uploads/760a1a55f8708891b255e23ae1c4f558.jpg",
+   "mention_pn": "on",
+   "team_name": "Father John Titties"
+  },
+  "settings": null,
+  "user_id": "1125520581643882496"
+ },
+ {
+  "avatar": "b3338675f635c2c1f42b469621d38ec6",
+  "display_name": "ikemay",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "avatar": "https://sleepercdn.com/uploads/9f0170b51ad5302d381c242c5ee2c40e.jpg",
+   "mention_pn": "on",
+   "team_name": "Dial W for Wumbo"
+  },
+  "settings": null,
+  "user_id": "1125563513713283072"
+ },
+ {
+  "avatar": "ead1c5eb6f5b3829029599b1490bb722",
+  "display_name": "madsareeno",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "mention_pn": "on",
+   "team_name": "WalkerTradedMeJa’Marr"
+  },
+  "settings": null,
+  "user_id": "1129602955340226560"
+ },
+ {
+  "avatar": "82aec8e811b839b8ec25d7b458afd57b",
+  "display_name": "hogskinhunny",
+  "is_bot": false,
+  "is_owner": false,
+  "league_id": "1312066943758401536",
+  "metadata": {
+   "allow_pn": "on",
+   "allow_sms": "on",
+   "mention_pn": "on",
+   "team_name": "Hogskin Hunnys"
+  },
+  "settings": null,
+  "user_id": "1130268231207444480"
+ }
+]
